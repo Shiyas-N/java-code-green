@@ -1,0 +1,28 @@
+02/09/2025 01:03:03.560 - [INFO] - +---------------------------------+
+02/09/2025 01:03:03.560 - [INFO] - | JoularJX Agent Version 3.0.1    |
+02/09/2025 01:03:03.560 - [INFO] - +---------------------------------+
+02/09/2025 01:03:03.592 - [INFO] - Results will be stored in joularjx-result/1872-1756798383592/
+02/09/2025 01:03:03.630 - [INFO] - Initializing for platform: 'windows 11' running on architecture: 'amd64'
+02/09/2025 01:03:03.632 - [INFO] - Please wait while initializing JoularJX...
+02/09/2025 01:03:05.083 - [INFO] - Initialization finished
+02/09/2025 01:03:05.083 - [INFO] - Started monitoring application with ID 1872
+Starting Energy Consumption Test...
+Simple Math Result = 295.4933743546314
+Sum of Data = 495415
+Factorial(10) = 3628800
+Processing: SHIYAS
+Processing: ENERGY
+Processing: JOULARJX
+Processing: TEST
+Sorted Names: [Energy, JoularJX, Shiyas, Test]
+Simulating workload... cycle 1
+Simulating workload... cycle 2
+Simulating workload... cycle 3
+Simulating workload... cycle 4
+Simulating workload... cycle 5
+Sorted Array: [3, 5, 7, 9, 10, 12, 15]
+Energy Consumption Test Finished!
+02/09/2025 01:03:08.442 - [INFO] - Thread CPU time negative, taking previous time + 1 : 734375001 for thread: 1
+02/09/2025 01:03:08.470 - [INFO] - JoularJX finished monitoring application with ID 1872
+02/09/2025 01:03:08.470 - [INFO] - Program consumed 0.08 joules
+02/09/2025 01:03:08.496 - [INFO] - Energy consumption of methods and filtered methods written to files
