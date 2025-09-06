@@ -12,6 +12,7 @@ import java.nio.file.*;
 public class FileUploadController {
 
     private static final String UPLOAD_DIR = "uploads/";
+    private static final String JOULARJX_DIR="src/main/java/com/javacodegreen/backend/JoularJX/";
 
     @PostMapping("/upload")
     public ResponseEntity<String> uploadFile(@RequestParam("file") MultipartFile file) {
@@ -45,19 +46,38 @@ public class FileUploadController {
 
             // --- Run the file (only if compilation succeeded) ---
             String className = file.getOriginalFilename().replace(".java", "");
-            Process runProcess = new ProcessBuilder(
-                    "java", "-cp", uploadPath.toAbsolutePath().toString(), className
+//            Process runProcess = new ProcessBuilder(
+//                    "java", "-cp", uploadPath.toAbsolutePath().toString(), className
+//            ).redirectErrorStream(true).start();
+//
+//            String runOutput = new String(runProcess.getInputStream().readAllBytes());
+//            int runExit = runProcess.waitFor();
+//
+//            if (runExit != 0) {
+//                return ResponseEntity.internalServerError()
+//                        .body("Execution failed:\n" + runOutput);
+//            }
+
+            Path joularjxPath = Paths.get(JOULARJX_DIR, "joularjx-3.0.1.jar");
+            Path joularjxConfig = Paths.get(JOULARJX_DIR, "config.properties");
+
+            Process energyProcess = new ProcessBuilder(
+                    "java",
+                    "-javaagent:" + joularjxPath.toAbsolutePath().toString(),
+                    "-Djoularjx.config=" + joularjxConfig.toAbsolutePath(),
+                    "-cp", uploadPath.toAbsolutePath().toString(),
+                    className
             ).redirectErrorStream(true).start();
 
-            String runOutput = new String(runProcess.getInputStream().readAllBytes());
-            int runExit = runProcess.waitFor();
+            String energyOutput=new String(energyProcess.getInputStream().readAllBytes());
+            int runEnergyExit=energyProcess.waitFor();
 
-            if (runExit != 0) {
+            if (runEnergyExit!=0){
                 return ResponseEntity.internalServerError()
-                        .body("Execution failed:\n" + runOutput);
+                        .body("Enegy operation is failed:\n"+energyOutput);
             }
 
-            return ResponseEntity.ok("✅ File compiled and executed successfully!\nOutput:\n" + runOutput);
+            return ResponseEntity.ok("File compiled and executed successfully!\nOutput:\n" + energyOutput);
 
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body("Error: " + e.getMessage());
