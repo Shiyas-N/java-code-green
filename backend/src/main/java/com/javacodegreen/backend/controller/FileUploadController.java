@@ -6,6 +6,9 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.*;
 import java.nio.file.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 @RestController
 @RequestMapping("/api")
@@ -13,6 +16,7 @@ public class FileUploadController {
 
     private static final String UPLOAD_DIR = "uploads/";
     private static final String JOULARJX_DIR="src/main/java/com/javacodegreen/backend/JoularJX/";
+    private static final String JOULARJX_RESULT_DIR="joularjx-result/";
 
     @PostMapping("/upload")
     public ResponseEntity<String> uploadFile(@RequestParam("file") MultipartFile file) {
@@ -77,7 +81,25 @@ public class FileUploadController {
                         .body("Enegy operation is failed:\n"+energyOutput);
             }
 
-            return ResponseEntity.ok("File compiled and executed successfully!\nOutput:\n" + energyOutput);
+            Pattern pattern = Pattern.compile("joularjx-result/(\\S+)/");
+            Matcher matcher = pattern.matcher(energyOutput);
+
+            if (matcher.find()) {
+                String runId = matcher.group(1);
+                Path resultDir = Paths.get(JOULARJX_RESULT_DIR, runId);
+
+                try (Stream<Path> files = Files.list(resultDir)) {
+                    StringBuilder fileList = new StringBuilder("Result files:\n");
+                    files.forEach(f -> fileList.append(f.getFileName()).append("\n"));
+                    return ResponseEntity.ok("Execution successful!\n" + energyOutput + "\n\n" + fileList);
+                } catch (IOException e) {
+                    return ResponseEntity.internalServerError().body("Error reading result directory: " + e.getMessage());
+                }
+            } else {
+                return ResponseEntity.internalServerError().body("Could not find result directory ID in output:\n" + energyOutput);
+            }
+
+//            return ResponseEntity.ok("File compiled and executed successfully!\nOutput:\n" + energyOutput);
 
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body("Error: " + e.getMessage());
