@@ -6,6 +6,7 @@ import com.github.javaparser.ast.expr.BinaryExpr;
 import com.github.javaparser.ast.expr.ObjectCreationExpr;
 import com.github.javaparser.ast.stmt.ForStmt;
 import com.github.javaparser.ast.stmt.WhileStmt;
+import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -25,8 +26,8 @@ import java.util.stream.StreamSupport;
 public class FileUploadController {
 
     private static final String UPLOAD_DIR = "uploads/";
-    private static final String JOULARJX_DIR="src/main/java/com/javacodegreen/backend/JoularJX/";
-    private static final String JOULARJX_RESULT_DIR="joularjx-result/";
+    private static final String JOULARJX_DIR = "src/main/java/com/javacodegreen/backend/JoularJX/";
+    private static final String JOULARJX_RESULT_DIR = "joularjx-result/";
 
     // ================== STATIC ANALYSIS SECTION ==================
 
@@ -54,73 +55,68 @@ public class FileUploadController {
         }
     }
 
-    // Run static analysis rules
+    // Run static analysis rules (single visitor)
     private List<RuleViolation> runStaticAnalysis(Path filePath) {
+        Set<String> seen = new HashSet<>();
         List<RuleViolation> violations = new ArrayList<>();
         try {
             String code = Files.readString(filePath);
             CompilationUnit cu = StaticJavaParser.parse(code);
 
-            // RULE 1: String concatenation in loops
-            cu.findAll(ForStmt.class).forEach(loop -> {
-                loop.findAll(BinaryExpr.class).forEach(expr -> {
+            cu.accept(new VoidVisitorAdapter<Void>() {
+                @Override
+                public void visit(BinaryExpr expr, Void arg) {
+                    super.visit(expr, arg);
                     if (expr.getOperator() == BinaryExpr.Operator.PLUS) {
-                        violations.add(new RuleViolation(
-                                "STR_CONCAT_LOOP",
-                                expr.getBegin().map(p -> p.line).orElse(-1),
-                                "String concatenation inside loop",
-                                "Use StringBuilder instead of '+' inside loops."
-                        ));
+                        if (expr.findAncestor(ForStmt.class).isPresent() ||
+                                expr.findAncestor(WhileStmt.class).isPresent()) {
+                            int line = expr.getBegin().map(p -> p.line).orElse(-1);
+                            String key = "STR_CONCAT_LOOP:" + line;
+                            if (seen.add(key)) {
+                                violations.add(new RuleViolation(
+                                        "STR_CONCAT_LOOP",
+                                        line,
+                                        "String concatenation inside loop",
+                                        "Use StringBuilder instead of '+' inside loops."
+                                ));
+                            }
+                        }
                     }
-                });
-            });
-            cu.findAll(WhileStmt.class).forEach(loop -> {
-                loop.findAll(BinaryExpr.class).forEach(expr -> {
-                    if (expr.getOperator() == BinaryExpr.Operator.PLUS) {
-                        violations.add(new RuleViolation(
-                                "STR_CONCAT_LOOP",
-                                expr.getBegin().map(p -> p.line).orElse(-1),
-                                "String concatenation inside loop",
-                                "Use StringBuilder instead of '+' inside loops."
-                        ));
-                    }
-                });
-            });
-
-            // RULE 2: Object creation inside loops
-            cu.findAll(ForStmt.class).forEach(loop -> {
-                loop.findAll(ObjectCreationExpr.class).forEach(obj -> {
-                    violations.add(new RuleViolation(
-                            "OBJ_IN_LOOP",
-                            obj.getBegin().map(p -> p.line).orElse(-1),
-                            "Object creation inside loop",
-                            "Move object creation outside loop if reusable."
-                    ));
-                });
-            });
-            cu.findAll(WhileStmt.class).forEach(loop -> {
-                loop.findAll(ObjectCreationExpr.class).forEach(obj -> {
-                    violations.add(new RuleViolation(
-                            "OBJ_IN_LOOP",
-                            obj.getBegin().map(p -> p.line).orElse(-1),
-                            "Object creation inside loop",
-                            "Move object creation outside loop if reusable."
-                    ));
-                });
-            });
-
-            // RULE 3: File I/O inside loops (simplified - looks for common classes)
-            cu.findAll(ObjectCreationExpr.class).forEach(obj -> {
-                String type = obj.getType().getNameAsString();
-                if (type.equals("FileReader") || type.equals("FileWriter") || type.equals("Scanner")) {
-                    violations.add(new RuleViolation(
-                            "FILE_IO_LOOP",
-                            obj.getBegin().map(p -> p.line).orElse(-1),
-                            "File I/O inside loop or frequent creation",
-                            "Use Buffered I/O and open files outside loops."
-                    ));
                 }
-            });
+
+                @Override
+                public void visit(ObjectCreationExpr obj, Void arg) {
+                    super.visit(obj, arg);
+
+                    int line = obj.getBegin().map(p -> p.line).orElse(-1);
+
+                    if (obj.findAncestor(ForStmt.class).isPresent() ||
+                            obj.findAncestor(WhileStmt.class).isPresent()) {
+                        String key = "OBJ_IN_LOOP:" + line;
+                        if (seen.add(key)) {
+                            violations.add(new RuleViolation(
+                                    "OBJ_IN_LOOP",
+                                    line,
+                                    "Object creation inside loop",
+                                    "Move object creation outside loop if reusable."
+                            ));
+                        }
+                    }
+
+                    String type = obj.getType().getNameAsString();
+                    if (type.equals("FileReader") || type.equals("FileWriter") || type.equals("Scanner")) {
+                        String key = "FILE_IO_LOOP:" + line;
+                        if (seen.add(key)) {
+                            violations.add(new RuleViolation(
+                                    "FILE_IO_LOOP",
+                                    line,
+                                    "File I/O inside loop or frequent creation",
+                                    "Use Buffered I/O and open files outside loops."
+                            ));
+                        }
+                    }
+                }
+            }, null);
 
         } catch (Exception e) {
             violations.add(new RuleViolation("PARSER_ERROR", -1, "Parsing failed", e.getMessage()));
@@ -128,11 +124,12 @@ public class FileUploadController {
         return violations;
     }
 
+
     // ================== JOULARJX HANDLING ==================
 
     private void insertNested(Map<String, Object> map, List<String> keys, String value) {
         for (int i = 0; i < keys.size(); i++) {
-            String key = keys.get(i).replace(".csv", ""); // remove .csv
+            String key = keys.get(i).replace(".csv", "");
             if (i == keys.size() - 1) {
                 map.put(key, value);
             } else {
@@ -198,7 +195,8 @@ public class FileUploadController {
 
             if (compileExit != 0) {
                 return ResponseEntity.internalServerError()
-                        .body(Map.of("Error", compileOutput, "staticAnalysis", violations.stream().map(RuleViolation::toMap).toList()));
+                        .body(Map.of("Error", compileOutput,
+                                "staticAnalysis", violations.stream().map(RuleViolation::toMap).toList()));
             }
 
             // --- Run JoularJX ---
@@ -208,25 +206,28 @@ public class FileUploadController {
 
             Process energyProcess = new ProcessBuilder(
                     "java",
+                    "-XX:-Inline","-Xint",
                     "-javaagent:" + joularjxPath.toAbsolutePath().toString(),
                     "-Djoularjx.config=" + joularjxConfig.toAbsolutePath(),
                     "-cp", uploadPath.toAbsolutePath().toString(),
                     className
             ).redirectErrorStream(true).start();
 
-            String energyOutput=new String(energyProcess.getInputStream().readAllBytes());
-            int runEnergyExit=energyProcess.waitFor();
+            String energyOutput = new String(energyProcess.getInputStream().readAllBytes());
+            int runEnergyExit = energyProcess.waitFor();
 
-            if (runEnergyExit!=0){
+            if (runEnergyExit != 0) {
                 return ResponseEntity.internalServerError()
-                        .body(Map.of("Error",energyOutput, "staticAnalysis", violations.stream().map(RuleViolation::toMap).toList()));
+                        .body(Map.of("Error", energyOutput,
+                                "staticAnalysis", violations.stream().map(RuleViolation::toMap).toList()));
             }
 
             Pattern pattern = Pattern.compile("joularjx-result/(\\S+)/");
             Matcher matcher = pattern.matcher(energyOutput);
 
             if (!matcher.find()) {
-                return ResponseEntity.internalServerError().body(Map.of("Error","No runId found in output", "staticAnalysis", violations.stream().map(RuleViolation::toMap).toList()));
+                return ResponseEntity.internalServerError().body(Map.of("Error", "No runId found in output",
+                        "staticAnalysis", violations.stream().map(RuleViolation::toMap).toList()));
             }
             String runId = matcher.group(1);
 
