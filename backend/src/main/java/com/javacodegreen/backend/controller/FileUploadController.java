@@ -31,6 +31,50 @@ public class FileUploadController {
 
     // ================== STATIC ANALYSIS SECTION ==================
 
+
+    private void updateConfigFile(CompilationUnit cu) {
+        try {
+            Path configPath = Paths.get(JOULARJX_DIR, "config.properties");
+            Properties props = new Properties();
+
+            // Load existing config if present
+            if (Files.exists(configPath)) {
+                try (InputStream in = Files.newInputStream(configPath)) {
+                    props.load(in);
+                }
+            }
+
+            // Extract package name
+            String packageName = cu.getPackageDeclaration()
+                    .map(pd -> pd.getName().asString())
+                    .orElse("");
+
+            // Extract classes
+            List<String> classNames = cu.findAll(com.github.javaparser.ast.body.ClassOrInterfaceDeclaration.class)
+                    .stream()
+                    .map(c -> packageName.isEmpty()
+                            ? c.getNameAsString()
+                            : packageName + "." + c.getNameAsString())
+                    .toList();
+
+            // Merge with existing config
+            String existing = props.getProperty("filter-method-names", "");
+            Set<String> filters = new LinkedHashSet<>(Arrays.asList(existing.split(",")));
+
+            classNames.forEach(filters::add);
+
+            props.setProperty("filter-method-names", String.join(",", filters));
+
+            try (OutputStream out = Files.newOutputStream(configPath)) {
+                props.store(out, "Updated by FileUploadController");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+
+
     // Rule violation model
     static class RuleViolation {
         String ruleId;
@@ -56,12 +100,13 @@ public class FileUploadController {
     }
 
     // Run static analysis rules (single visitor)
-    private List<RuleViolation> runStaticAnalysis(Path filePath) {
+    private List<RuleViolation> runStaticAnalysis(Path filePath,CompilationUnit[] outCu) {
         Set<String> seen = new HashSet<>();
         List<RuleViolation> violations = new ArrayList<>();
         try {
             String code = Files.readString(filePath);
             CompilationUnit cu = StaticJavaParser.parse(code);
+            outCu[0] =cu;
 
             cu.accept(new VoidVisitorAdapter<Void>() {
                 @Override
@@ -183,7 +228,13 @@ public class FileUploadController {
             Files.write(filePath, file.getBytes());
 
             // --- Static Analysis Step ---
-            List<RuleViolation> violations = runStaticAnalysis(filePath);
+            CompilationUnit[] cuHolder = new CompilationUnit[1];
+            List<RuleViolation> violations = runStaticAnalysis(filePath,cuHolder);
+
+            // --- Update config with detected class ---
+            if (cuHolder[0] != null) {
+                updateConfigFile(cuHolder[0]);
+            }
 
             // --- Compile the file ---
             Process compileProcess = new ProcessBuilder(
