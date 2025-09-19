@@ -1,0 +1,35 @@
+[
+  {
+    "id": "STR_CONCAT_LOOP",
+    "description": "String concatenation inside loop",
+    "severity": "HIGH",
+    "match": {
+      "node": "CtBinaryOperator",
+      "operator": "PLUS",
+      "ancestor": ["CtFor", "CtWhile"],
+      "operandType": "java.lang.String"
+    },
+    "suggestion": "Use StringBuilder instead of '+' inside loops."
+  },
+  {
+    "id": "OBJ_IN_LOOP",
+    "description": "Object creation inside loop",
+    "severity": "MEDIUM",
+    "match": {
+      "node": "CtConstructorCall",
+      "ancestor": ["CtFor", "CtWhile"]
+    },
+    "suggestion": "Move object creation outside loop if reusable."
+  },
+  {
+    "id": "FILE_IO_LOOP",
+    "description": "File I/O inside loop",
+    "severity": "HIGH",
+    "match": {
+      "node": "CtConstructorCall",
+      "type": ["FileReader", "FileWriter", "Scanner"],
+      "ancestor": ["CtFor", "CtWhile"]
+    },
+    "suggestion": "Use buffered I/O and avoid opening inside loops."
+  }
+]
